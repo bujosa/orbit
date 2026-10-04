@@ -1,6 +1,6 @@
 # Development handoff
 
-Orbit 0.2.0 is prepared for public early-access publication with the owner's authorization. Work on account-owner browser approvals is deferred; the local development app remains installed and running for metadata monitoring. The private inventory and verification cache are retained outside Git for a later session. Existing T3, Tailscale, provider credentials, and on-demand remote agents are preserved.
+Orbit 0.2.0 is a public early-access project, published with the owner's authorization. Work on account-owner browser approvals is deferred; the local development app remains installed and running for metadata monitoring. The private inventory and verification cache are retained outside Git for a later session. Existing T3, Tailscale, provider credentials, and on-demand remote agents are preserved.
 
 ## Completed
 
@@ -10,13 +10,13 @@ Orbit 0.2.0 is prepared for public early-access publication with the owner's aut
 - Explicit fleet verification and a reconnection queue with retry, skip, stop, and post-login access checks.
 - Shared `orbitctl` policy, sanitized output, strict SSH trust, private local state, bounded subprocesses, and target-local Codex file-cache recovery.
 - Twenty-nine passing tests plus release build, formatting, bundle-signature validation, and native visual review.
+- Hosted macOS CI passed on the public feature branch, including build, all 29 tests, formatting, and app packaging; GitGuardian passed as well. Previous private-branch jobs were blocked before execution by GitHub account billing/spending limits.
 - Live integration reached four Macs with Tailscale and T3 available. The latest recorded access checks passed fifteen of sixteen provider requests; one Codex connection required fresh sign-in. These are recorded results, not a guarantee of current connectivity or billing status.
 
 ## Still pending
 
 - Account-owner approval of the remaining independent Codex logins, followed by fresh model verification.
 - Completed browser-flow coverage, including MFA and expiry recovery. Challenges and cancellation were exercised; completed approval and automatic queue advancement are not yet counted as end-to-end validation.
-- Hosted macOS CI: GitHub prevented the job from starting because of an account billing/spending-limit block. No hosted build or test step ran. GitGuardian passed on the feature branch.
 - The production/distribution items listed in the [roadmap](roadmap.md).
 
 ## Resume locally
