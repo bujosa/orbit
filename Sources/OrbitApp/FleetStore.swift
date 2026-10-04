@@ -60,6 +60,11 @@ final class FleetStore: ObservableObject {
   }
   var readyCount: Int { entries.filter { $0.health.ready }.count }
   var connectionBusy: Bool { connectingFleet || reconnecting || login?.phase.running == true }
+  private var connectionSummary: String {
+    readyCount == entries.count && !entries.isEmpty
+      ? "Every Mac and provider is connected and verified."
+      : "\(readyCount) of \(entries.count) Macs ready. Follow the actions below for anything that needs attention."
+  }
 
   init() {
     do {
@@ -86,8 +91,8 @@ final class FleetStore: ObservableObject {
       try? await Task.sleep(for: .milliseconds(100))
     }
     refreshing = true
-    let devices = entries.filter { !(login?.phase.running == true && login?.deviceID == $0.id) }
-      .map(\.device)
+    // Status is read-only. Keep reachability current even while a provider login is waiting.
+    let devices = entries.map(\.device)
     for index in entries.indices {
       entries[index].checking = devices.contains { $0.id == entries[index].id }
     }
@@ -171,15 +176,13 @@ final class FleetStore: ObservableObject {
       }
     }
     connectingFleet = false
-    connectionNote =
-      readyCount == entries.count && !entries.isEmpty
-      ? "Every Mac and provider is connected and verified."
-      : "\(readyCount) of \(entries.count) Macs ready. Follow the actions below for anything that needs attention."
+    connectionNote = connectionSummary
   }
 
   func reconnectAccounts() async {
     guard !connectionBusy, entries.allSatisfy({ $0.verifying.isEmpty }) else { return }
     reconnecting = true
+    connectionNote = nil
     await refresh()
     guard reconnecting else { return }
     reconnectQueue = entries.flatMap { entry in
@@ -202,6 +205,7 @@ final class FleetStore: ObservableObject {
       if login?.phase.running == true { return }
     }
     reconnecting = false
+    connectionNote = connectionSummary
   }
 
   private func verifySavedSessions(_ id: UUID) async {
