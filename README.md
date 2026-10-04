@@ -115,4 +115,4 @@ git diff --check
 
 Core tests cover SSH injection and trust, stale results, real access versus cached login, safe diagnostics, private inventory writes, symlink refusal, and subprocess deadlines. Native UI changes are reviewed visually.
 
-See [architecture](Docs/architecture.md) and [roadmap](Docs/roadmap.md). MIT licensed; the repository remains private.
+See [architecture](Docs/architecture.md), [roadmap](Docs/roadmap.md), and the [development handoff](Docs/development-handoff.md) for completed validation, deferred sign-in work, and how to resume. MIT licensed; the repository remains private.

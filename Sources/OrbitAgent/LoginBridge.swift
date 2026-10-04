@@ -17,7 +17,6 @@ final class LoginBridge: @unchecked Sendable {
   func run() -> Int32 {
     var lockFD: Int32 = -1
     var rollback: CredentialRollback?
-    var launched = false
     do {
       lockFD = try acquireLock()
       guard flock(lockFD, LOCK_EX | LOCK_NB) == 0 else {
@@ -44,7 +43,6 @@ final class LoginBridge: @unchecked Sendable {
       process.standardError = output
       _ = fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
       try process.run()
-      launched = true
       emit(.starting)
       if let initialInput {
         try input.fileHandleForWriting.write(contentsOf: initialInput)
@@ -67,7 +65,8 @@ final class LoginBridge: @unchecked Sendable {
       try? input.fileHandleForWriting.close()
       lock.unlock()
       if let reason {
-        try rollback?.finish(succeeded: process.terminationStatus == 0)
+        // A cancelled/expired CLI can exit zero without saving a new credential.
+        try rollback?.finish(succeeded: false)
         emit(reason)
         return 1
       }
@@ -85,7 +84,7 @@ final class LoginBridge: @unchecked Sendable {
         stop(.failed)
         process.waitUntilExit()
       }
-      try? rollback?.finish(succeeded: launched && process.terminationStatus == 0)
+      try? rollback?.finish(succeeded: false)
       emit(.failed)
       return 1
     }
