@@ -1,0 +1,8 @@
+{
+  "name": "orbit-cursor-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@cursor/sdk": "1.0.31"
+  }
+}

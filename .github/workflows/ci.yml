@@ -1,0 +1,23 @@
+name: Swift checks
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build
+        run: swift build -c release
+      - name: Test core behavior and trust boundaries
+        run: swift test
+      - name: Check formatting
+        run: xcrun swift-format lint --strict --recursive Sources Tests Scripts/make-icon.swift
+      - name: Build the app bundle
+        run: bash Scripts/build-app.sh
