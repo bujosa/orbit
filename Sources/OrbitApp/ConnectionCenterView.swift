@@ -18,6 +18,11 @@ struct ConnectionCenterView: View {
             .font(.system(size: 13)).foregroundStyle(.secondary)
         }
         Spacer()
+        Toggle(
+          "Privacy mode",
+          isOn: Binding(get: { store.privacyMode }, set: { store.setPrivacyMode($0) })
+        )
+        .toggleStyle(.switch).font(.system(size: 11))
         Button("Done") { dismiss() }.disabled(
           store.login?.phase.running == true || store.reconnecting
         )
@@ -62,6 +67,7 @@ struct ConnectionCenterView: View {
     .interactiveDismissDisabled(store.login?.phase.running == true || store.reconnecting)
     .onChange(of: store.login?.phase) { _, _ in authorizationCode = "" }
     .onChange(of: store.login?.id) { _, _ in authorizationCode = "" }
+    .onChange(of: store.privacyMode) { _, _ in authorizationCode = "" }
   }
 
   private func loginCard(_ login: LoginProgress) -> some View {
@@ -70,7 +76,7 @@ struct ConnectionCenterView: View {
         Image(systemName: login.phase == .ready ? "checkmark.circle.fill" : login.provider.symbol)
           .foregroundStyle(login.phase == .ready ? connectionMint : .white)
         Text(
-          "\(login.provider.title) · \(store.entries.first { $0.id == login.deviceID }?.device.name ?? "Mac")"
+          "\(login.provider.title) · \(store.entries.first { $0.id == login.deviceID }.map { store.displayName($0.device) } ?? "Mac")"
         )
         .font(.headline)
         Spacer()
@@ -88,7 +94,11 @@ struct ConnectionCenterView: View {
           }
         }
       }
-      if let challenge = login.challenge, login.phase == .awaitingBrowser {
+      if login.phase == .awaitingBrowser, store.privacyMode {
+        Text("Turn off privacy mode to see the provider page and temporary sign-in code.")
+          .font(.system(size: 12)).foregroundStyle(.secondary)
+      }
+      if let challenge = login.challenge, login.phase == .awaitingBrowser, !store.privacyMode {
         HStack(spacing: 16) {
           Button("Open provider sign-in") {
             guard (try? challenge.validate(for: login.provider)) != nil,
@@ -157,7 +167,7 @@ struct ConnectionCenterView: View {
       HStack {
         Image(systemName: entry.health.ready ? "checkmark.circle.fill" : "desktopcomputer")
           .foregroundStyle(entry.health.ready ? connectionMint : .secondary)
-        Text(entry.device.name).font(.headline)
+        Text(store.displayName(entry.device)).font(.headline)
         Spacer()
         Text(
           entry.checking

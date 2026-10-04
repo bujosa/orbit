@@ -16,4 +16,4 @@
 - Explicit service recovery, wake support, and maintenance actions.
 - iPhone/iPad companion with its own trust model.
 
-Open-source publication requires the owner's explicit decision after implementation and security review. Nothing changes visibility automatically.
+The owner authorized public open-source publication for the 0.2.0 early-access release. Public assets must remain free of personal inventory, account data, and credentials.

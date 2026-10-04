@@ -2,71 +2,61 @@
 
 **Your Macs. One clear view.**
 
-A native macOS control room for your computers and AI coding accounts, built with SwiftUI and a small Swift agent. Orbit checks connectivity, T3 availability, and sessions for Claude Code, Codex, Grok Build, and Cursor, and helps you reconnect on the device that needs attention.
+A native macOS app for managing AI coding account access across your Macs. See which computers are reachable, which provider sessions work, and where you need to sign in. Connect Claude Code, Codex, Grok Build, and Cursor from one connection center using each provider's official login.
 
-This project is **private during development**. Publication requires an explicit owner decision.
+[Download v0.2.0 · Early access](https://github.com/bujosa/orbit/releases/tag/v0.2.0) · [User guide](Docs/user-guide.md) · [Troubleshooting](Docs/troubleshooting.md) · [Architecture](Docs/architecture.md)
 
-## What works in 0.2
+![Orbit fleet dashboard with four Macs and provider connection status](Docs/images/fleet-dashboard.png)
 
-- Fleet dashboard and menu bar companion, with status checks every 60 seconds while running.
-- Local Macs and trusted SSH connections over Tailscale.
-- Separate Mac, Tailscale, and T3 health signals.
-- Session metadata, masked emails, available plan labels, and known credential expiry.
-- Explicit model access checks, with results current for 15 minutes.
-- A connection center with managed official sign-in on the selected Mac, live progress, cancellation, and automatic access verification.
-- A guided queue for accounts that need reconnection, advancing only after verified success and pausing for retry or skip on failure.
-- A shared controller CLI for safe fleet status and explicit connection checks.
-- Optional connection/sign-in notifications and agent installation from the device menu.
+*Real app, with Privacy mode enabled. Device names, addresses, and account details are hidden. Status is a snapshot of a running fleet.*
 
-**A saved login is not verified model access. Account access is not billing status.** Orbit does not invent invoice dates, remaining paid usage, or subscription renewal.
+## One place for your coding accounts
 
-## Build
+- **Fleet health:** separate Mac, Tailscale, and T3 signals, refreshed every 60 seconds while Orbit runs.
+- **Account visibility:** saved sessions, available plan labels, masked account details, and known credential expiry.
+- **Verified access:** an explicit small model request distinguishes a saved login from working access. Successful results remain current for 15 minutes.
+- **Official sign-in:** start login on the selected Mac, approve it in your browser, then let Orbit verify the result.
+- **Guided reconnection:** reconnect accounts one at a time, with retry, skip, stop, and cancellation.
+- **Local control:** a menu bar companion, optional connection alerts, trusted SSH agents, and a bundled `orbitctl` CLI.
+- **Privacy mode:** hide identifying information and temporary sign-in instructions when sharing your screen.
 
-Requires macOS 14+, Swift 6+, Node.js 22.13+, and npm. The UI and agent are Swift; Cursor uses its official Node SDK, pinned in `Resources/cursor-runtime`.
+Orbit helps you use your existing subscriptions on your Macs. Payment renewal, invoices, and remaining paid usage stay with the provider; Orbit does not manage billing or create additional usage allowances.
+
+![Orbit connection center with verification and sign-in controls](Docs/images/connection-center.png)
+
+## Install
+
+The [v0.2.0 release](https://github.com/bujosa/orbit/releases/tag/v0.2.0) provides an **Apple Silicon** ZIP for **macOS 14 or later**. Extract it and move `Orbit.app` to Applications. This early-access build is ad hoc signed and **not notarized**. If macOS blocks it, review the source and build locally, or use macOS's normal app approval flow if you trust the release. Keep system security protections enabled.
+
+Install **Node.js 22.13+** and the provider CLIs you use on each Mac. Orbit bundles the pinned Cursor SDK; Node itself and the provider CLIs are separate prerequisites. Grok support targets official **Grok Build**.
+
+The first launch adds this Mac. For remote Macs, connect the controller and targets to your private Tailscale network, configure Remote Login and trusted SSH access, then choose **Add a Mac → Install / update agent**. Orbit checks known host keys and never silently trusts a new host. Follow the [setup guide](Docs/user-guide.md#add-a-remote-mac) for details.
+
+Choose **Connect fleet → Check & verify fleet** to check saved sessions. This explicit action sends small requests and counts toward normal provider usage. Choose **Connect** for an account that needs approval. Passwords and MFA stay on the provider's official page.
+
+## Build from source
+
+Requires macOS 14+, Swift 6+, Node.js 22.13+, and npm. The UI, controller, and agent are Swift; Cursor uses its official Node SDK pinned in `Resources/cursor-runtime`.
 
 ```sh
-swift build
+git clone https://github.com/bujosa/orbit.git
+cd orbit
 swift test
 bash Scripts/build-app.sh
 open dist/Orbit.app
 ```
 
-The bundle includes the Cursor SDK. Remote agents can reuse the SDK in an installed T3 CLI runtime. Without that runtime:
+For a release archive and SHA-256 checksums:
 
 ```sh
-npm install --prefix "$HOME/.local/share/orbit/runtime" @cursor/sdk@1.0.31
+bash Scripts/package-release.sh
 ```
 
-Provider CLIs must already be installed on each Mac. Grok means official Grok Build in `~/.grok/bin/grok`, not the legacy Homebrew CLI. The local app is ad hoc signed; Developer ID signing and notarized distribution are future work.
+See [release packaging](Docs/releasing.md) for artifact names, signing limits, and publication checks.
 
-## Connect a Mac
+## Automation
 
-1. Connect both Macs to the same private Tailscale network.
-2. Enable macOS Remote Login, configure your SSH key, and manually verify the host fingerprint.
-3. Add an existing SSH alias in Orbit. Optionally override the host with its Tailscale address.
-4. If the host is already trusted under a LAN address, use that address as the **known host alias**.
-5. Choose **Install / update agent** from the device menu, then refresh.
-
-Automatic checks use `BatchMode=yes` and `StrictHostKeyChecking=yes`. They never approve unknown host keys. **Open Terminal** is the explicit interactive connection action.
-
-Inventory and verification timestamps stay in `~/Library/Application Support/Orbit/`. The directory uses `0700`; `devices.json` and `state.json` use `0600`. No real inventory belongs in Git. See [the placeholder example](Examples/fleet.example.json).
-
-## One place to connect your fleet
-
-Choose **Connect fleet**, then **Check & verify fleet**. Orbit checks each Mac and verifies saved provider sessions, reusing successful checks for 15 minutes. A Mac becomes **Ready** only when Tailscale, T3, and all four provider checks succeed. Missing credentials and usage limits remain visible; Orbit never silently signs in or reports them as healthy.
-
-Choose **Connect** or **Sign in** for the provider that needs attention:
-
-1. Orbit starts the official login on that Mac through its trusted agent.
-2. Choose **Open provider sign-in**. Complete the provider's account/MFA/approval steps in your browser.
-3. For Codex and Grok, enter the displayed device code on that page. For Claude, paste the one-time authorization code into Orbit if the page asks. Cursor detects browser completion automatically.
-4. Orbit checks the resulting session and sends a small real model request. Only then does it mark the connection verified.
-
-To reconnect several accounts, choose **Reconnect needed accounts**. Orbit guides you through them one at a time and verifies each before continuing. A failed or expired attempt pauses the queue for retry or skip. **Stop queue** cancels the current attempt and clears pending work. Authentication rejection stays actionable until a new check succeeds; it does not disappear when a successful verification's 15-minute window expires.
-
-The connection center owns the entire workflow; you do not need to run provider commands manually in Terminal. Your provider may still require you to approve sign-in. Orbit never requests your password. Cancelling or closing Orbit stops its owned login process, and temporary sign-in instructions are cleared. An expired or failed sign-in can be retried with a fresh challenge. Codex file-cache recovery restores the previous cache if a failed or cancelled attempt removes it, without overwriting a new or externally changed cache. Restoring a file does not guarantee that the provider still accepts its session.
-
-For assistants and scripts, the same connection policy is available in the bundled controller:
+The bundled controller uses the same connection policy as the UI:
 
 ```sh
 Orbit.app/Contents/MacOS/orbitctl status
@@ -75,44 +65,16 @@ Orbit.app/Contents/MacOS/orbitctl connect "Studio"
 Orbit.app/Contents/MacOS/orbitctl install-agents --all
 ```
 
-Output is versioned, sanitized JSON: no credentials, authorization challenges, emails, or private network addresses. `status` sends no model requests. `connect` is explicit, sends small requests when needed, updates the private verification cache, and exits nonzero if any selected Mac is not ready. Sign-in stays in Orbit's connection center. Refresh/reopen the app after external controller checks if its displayed cache is older.
+`status` reads metadata without inference. `connect` explicitly verifies access, caches results privately, and exits nonzero if a selected Mac is not ready. Output is versioned JSON without credentials, sign-in challenges, emails, or private addresses. Browser sign-in stays in Orbit. Refresh the app after checks performed by an external controller.
 
-## Sign-in and renewal
+## Privacy and availability
 
-Passwords stay on the provider's official page. Temporary device codes and Claude authorization codes are handled only in memory and never enter dashboard logs.
+Credentials stay on each target Mac. Inventory and verification timestamps stay in `~/Library/Application Support/Orbit/` with private permissions, outside the app and Git. The [example inventory](Examples/fleet.example.json) contains placeholders only. Temporary sign-in codes are held in memory and cleared after the attempt.
 
-| Provider | Official login | Session behavior |
-| --- | --- | --- |
-| Claude Code | `claude auth login --claudeai` | Native subscription sessions are provider-managed. Long-lived subscription tokens require replacement on expiry. |
-| Codex | `codex login --device-auth` | Codex manages ChatGPT session refresh. Device login may require enabling in account settings. |
-| Grok Build | `grok login --device-auth` | Grok manages OAuth refresh. Failed refresh or revocation requires sign-in. |
-| Cursor | `Cursor.auth.login()` | The SDK mints a user credential, 90 days by default. Orbit displays its known expiry. |
+The controller and target Macs must be powered on, awake, and connected. Remote access also requires Tailscale and SSH; T3 availability is a separate signal. Closing the window keeps the menu bar app running. Quitting Orbit or sleeping its controller stops monitoring. Orbit cannot bypass FileVault or keep an off Mac reachable, and it is not yet a separate 24/7 service.
 
-Prefer an independent official login on each Mac. Copied credentials can share expiry, refresh state, and revocation. More computers do not create more subscriptions or separate usage allowances. Payment renewal remains with the provider.
+## Project status
 
-After successful independent Claude login, Orbit can archive a recognized private `~/.t3/claude.env` shared-token file and update its recognized launcher. It refuses symlinks, permissive files, and unfamiliar launchers. The previous credential remains in a private archive on that Mac; other devices are not logged out.
+**0.2.0 is an early-access release.** Native challenges, cancellation, live fleet checks, and core trust boundaries have been exercised. Completed browser approval, MFA recovery, and automatic queue advancement still need broader end-to-end coverage. Developer ID signing, notarization, and automatic service recovery are future work. See the [development handoff](Docs/development-handoff.md) and [roadmap](Docs/roadmap.md).
 
-Cursor supports T3's **default `cursor` instance** and current local secret-store format. Custom bindings and encrypted alternative stores are outside 0.2. Refresh T3 after login if its catalog remains stale.
-
-Official references: [Claude authentication](https://code.claude.com/docs/en/authentication), [Codex authentication](https://learn.chatgpt.com/docs/auth), [Grok Build](https://docs.x.ai/build/overview), [Cursor SDK authentication](https://cursor.com/docs/sdk/typescript).
-
-## Availability
-
-Keep Orbit running in its menu bar. Each target must be powered on, awake, connected to Tailscale, and running SSH and T3. Use macOS energy and login settings intentionally for always-on hosts. FileVault may require physical unlock after reboot.
-
-Orbit cannot keep an off/sleeping Mac reachable, bypass FileVault, restart services automatically, or renew paid subscriptions. Monitoring runs while the controller is awake; this first version is not an independent 24/7 service. Routine checks send **no model requests**. Verify access sends a tiny request and counts toward normal usage.
-
-## Validation
-
-```sh
-swift build -c release
-swift test
-xcrun swift-format lint --strict --recursive Sources Tests Scripts/make-icon.swift
-bash Scripts/build-app.sh
-codesign --verify --strict dist/Orbit.app
-git diff --check
-```
-
-Core tests cover SSH injection and trust, stale results, real access versus cached login, safe diagnostics, private inventory writes, symlink refusal, and subprocess deadlines. Native UI changes are reviewed visually.
-
-See [architecture](Docs/architecture.md), [roadmap](Docs/roadmap.md), and the [development handoff](Docs/development-handoff.md) for completed validation, deferred sign-in work, and how to resume. MIT licensed; the repository remains private.
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for validation and repository conventions. [MIT licensed](LICENSE).

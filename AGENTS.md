@@ -1,6 +1,6 @@
 # Orbit development
 
-- This repository remains private until the owner explicitly requests publication.
+- The owner has authorized public open-source publication. Keep all personal fleet state and credentials outside this repository and its release artifacts.
 - Write code, documentation, and UI copy in English.
 - Never commit real device inventories, personal network addresses, account data, or credentials.
 - Keep provider credentials on each device. Export only sanitized status metadata.

@@ -40,6 +40,7 @@ final class FleetStore: ObservableObject {
   @Published var reconnecting = false
   @Published var connectingFleet = false
   @Published var connectionNote: String?
+  @Published var privacyMode = UserDefaults.standard.bool(forKey: "Orbit.privacyMode")
   @Published var notificationsEnabled = UserDefaults.standard.bool(forKey: "Orbit.notifications")
   private let inventory = InventoryStore()
   private var monitor: Task<Void, Never>?
@@ -60,6 +61,15 @@ final class FleetStore: ObservableObject {
   }
   var readyCount: Int { entries.filter { $0.health.ready }.count }
   var connectionBusy: Bool { connectingFleet || reconnecting || login?.phase.running == true }
+  func displayName(_ device: Device) -> String {
+    guard privacyMode else { return device.name }
+    let number = (entries.firstIndex { $0.id == device.id } ?? 0) + 1
+    return "Mac \(number)"
+  }
+  func setPrivacyMode(_ enabled: Bool) {
+    privacyMode = enabled
+    UserDefaults.standard.set(enabled, forKey: "Orbit.privacyMode")
+  }
   private var connectionSummary: String {
     readyCount == entries.count && !entries.isEmpty
       ? "Every Mac and provider is connected and verified."
@@ -117,13 +127,13 @@ final class FleetStore: ObservableObject {
         entries[index].checking = false
         if wasOnline && error != nil {
           notify(
-            title: "\(entries[index].device.name) is unreachable",
+            title: "\(displayName(entries[index].device)) is unreachable",
             body: "Check its power, Tailscale connection, and SSH access.",
             key: id.uuidString + "offline")
         }
         if t3WasRunning && snapshot?.t3Running == false {
           notify(
-            title: "T3 is unavailable on \(entries[index].device.name)",
+            title: "T3 is unavailable on \(displayName(entries[index].device))",
             body: "The Mac is reachable, but its T3 service did not respond.",
             key: id.uuidString + "t3")
         }
@@ -155,7 +165,8 @@ final class FleetStore: ObservableObject {
     persistChecks()
     if result.state == .loginRequired {
       notify(
-        title: "\(provider.title) needs sign-in", body: "Open Orbit to reconnect \(device.name).",
+        title: "\(provider.title) needs sign-in",
+        body: "Open Orbit to reconnect \(displayName(device)).",
         key: id.uuidString + provider.rawValue)
     }
   }

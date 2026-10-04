@@ -82,7 +82,7 @@ struct FleetView: View {
             Image(systemName: entry.device.isLocal ? "laptopcomputer" : "desktopcomputer").font(
               .system(size: 16))
             VStack(alignment: .leading, spacing: 3) {
-              Text(entry.device.name).font(.system(size: 13, weight: .medium))
+              Text(store.displayName(entry.device)).font(.system(size: 13, weight: .medium))
               Text(
                 entry.checking
                   ? "Checking…"
@@ -108,6 +108,11 @@ struct FleetView: View {
       }
       .buttonStyle(.plain).foregroundStyle(.secondary).padding(.top, 6)
       Spacer()
+      Toggle(
+        "Privacy mode", isOn: Binding(get: { store.privacyMode }, set: { store.setPrivacyMode($0) })
+      )
+      .toggleStyle(.switch).font(.system(size: 11)).padding(.bottom, 12)
+      .help("Hide device names, addresses, account details, and sign-in codes in Orbit.")
       Toggle(
         "Connection alerts",
         isOn: Binding(get: { store.notificationsEnabled }, set: { store.enableNotifications($0) })
@@ -161,13 +166,15 @@ struct FleetView: View {
       HStack {
         VStack(alignment: .leading, spacing: 6) {
           HStack(spacing: 10) {
-            Text(entry.device.name).font(.system(size: 22, weight: .semibold))
+            Text(store.displayName(entry.device)).font(.system(size: 22, weight: .semibold))
             if entry.device.isLocal { badge("THIS MAC", color: .gray) }
           }
           Text(
-            entry.device.isLocal
-              ? "Local connection"
-              : entry.device.address.isEmpty ? entry.device.sshAlias : entry.device.address
+            store.privacyMode
+              ? "Connection details hidden"
+              : entry.device.isLocal
+                ? "Local connection"
+                : entry.device.address.isEmpty ? entry.device.sshAlias : entry.device.address
           )
           .font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
         }
@@ -253,15 +260,19 @@ struct FleetView: View {
           Text(provider.title).font(.system(size: 14, weight: .semibold))
           badge(title, color: color)
         }
-        Text([status?.plan, status?.account].compactMap { $0 }.joined(separator: " · "))
-          .font(.system(size: 11)).foregroundStyle(.secondary)
+        Text(
+          store.privacyMode
+            ? "Account details hidden"
+            : [status?.plan, status?.account].compactMap { $0 }.joined(separator: " · ")
+        )
+        .font(.system(size: 11)).foregroundStyle(.secondary)
         Text(
           fresh && check?.state != .verified
             ? check?.note ?? ""
             : status?.renewal.label ?? "Check this Mac to see its session status."
         )
         .font(.system(size: 10)).foregroundStyle(.tertiary)
-        if let expiry = status?.expiresAt, status?.renewal == .manual {
+        if !store.privacyMode, let expiry = status?.expiresAt, status?.renewal == .manual {
           Text("Credential expires \(expiry.formatted(date: .abbreviated, time: .omitted))")
             .font(.system(size: 10)).foregroundStyle(
               expiry.timeIntervalSinceNow < 604800 ? .orange : .secondary)

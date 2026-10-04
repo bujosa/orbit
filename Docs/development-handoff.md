@@ -1,10 +1,11 @@
 # Development handoff
 
-Orbit 0.2 is a private development build. Work on account-owner browser approvals is deferred; the local development app remains installed and running for metadata monitoring. The private inventory and verification cache are retained outside Git for a later session. Existing T3, Tailscale, provider credentials, and on-demand remote agents are preserved.
+Orbit 0.2.0 is prepared for public early-access publication with the owner's authorization. Work on account-owner browser approvals is deferred; the local development app remains installed and running for metadata monitoring. The private inventory and verification cache are retained outside Git for a later session. Existing T3, Tailscale, provider credentials, and on-demand remote agents are preserved.
 
 ## Completed
 
 - Native fleet dashboard, menu bar companion, and connection center.
+- Privacy mode and native screenshots with device/account details hidden.
 - Official managed login on the selected Mac for Claude Code, Codex, Grok Build, and Cursor.
 - Explicit fleet verification and a reconnection queue with retry, skip, stop, and post-login access checks.
 - Shared `orbitctl` policy, sanitized output, strict SSH trust, private local state, bounded subprocesses, and target-local Codex file-cache recovery.
