@@ -19,9 +19,16 @@ struct OrbitAgent {
           throw OrbitError.invalidDevice
         }
         exit(try Login.run(provider))
-      case "--version": print("orbit-agent 0.1.0 (schema 1)")
+      case "login-bridge":
+        guard arguments.count == 2, let provider = Provider(rawValue: arguments[1]) else {
+          throw OrbitError.invalidDevice
+        }
+        exit(LoginBridge(provider: provider).run())
+      case "--version": print("orbit-agent 0.2.0 (snapshot schema 1, login schema 1)")
       default:
-        print("Usage: orbit-agent snapshot | verify <claude|codex|grok|cursor> | login <provider>")
+        print(
+          "Usage: orbit-agent snapshot | verify <provider> | login <provider> | login-bridge <provider>"
+        )
         exit(64)
       }
     } catch {

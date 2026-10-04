@@ -3,6 +3,30 @@ import Foundation
 import OrbitCore
 
 enum Login {
+  static func command(_ provider: Provider) throws -> (String, [String], Data?) {
+    switch provider {
+    case .claude:
+      guard let binary = Paths.nativeClaude else { throw OrbitError.agentMissing }
+      return (binary, ["auth", "login", "--claudeai"], nil)
+    case .codex:
+      guard let binary = Paths.codex else { throw OrbitError.agentMissing }
+      return (binary, ["login", "--device-auth"], nil)
+    case .grok:
+      guard let binary = Paths.grok else { throw OrbitError.agentMissing }
+      return (binary, ["login", "--device-auth"], nil)
+    case .cursor:
+      guard let sdk = Paths.cursorSDK, let node = Paths.node else { throw OrbitError.agentMissing }
+      return (
+        node, ["-e", CursorBridge.source],
+        try JSONSerialization.data(
+          withJSONObject: ["sdk": sdk, "action": "login"])
+      )
+    }
+  }
+
+  static func didSucceed(_ provider: Provider) throws {
+    if provider == .claude { try retireRecognizedSharedToken(environment: Paths.cleanEnvironment) }
+  }
   static func run(_ provider: Provider) throws -> Int32 {
     if provider == .cursor { return try CursorBridge.login() }
     let binary: String?
@@ -22,7 +46,7 @@ enum Login {
       arguments = ["login", "--device-auth"]
     case .grok:
       binary = Paths.grok
-      arguments = ["login", "--oauth", "--device-auth"]
+      arguments = ["login", "--device-auth"]
     case .cursor: fatalError("Handled above")
     }
     guard let binary else { throw OrbitError.agentMissing }
@@ -57,6 +81,11 @@ enum Login {
       throw OrbitError.unsafeFile
     }
     let wrapper = Paths.home.appendingPathComponent(".local/bin/claude")
+    let wrapperAttributes = try FileManager.default.attributesOfItem(atPath: wrapper.path)
+    guard wrapperAttributes[.type] as? FileAttributeType == .typeRegular,
+      wrapperAttributes[.ownerAccountID] as? UInt32 == getuid(),
+      (wrapperAttributes[.posixPermissions] as? Int ?? 0) & 0o022 == 0
+    else { throw OrbitError.unsafeFile }
     let wrapperText = (try? String(contentsOf: wrapper, encoding: .utf8)) ?? ""
     guard
       wrapperText.contains(

@@ -7,7 +7,7 @@
 - Expiry reminders and supported provider usage windows.
 - Custom T3 provider bindings behind a versioned adapter.
 - Local health history with bounded retention and redacted export.
-- End-to-end sign-in recovery using disposable sessions.
+- Provider-browser completion/recovery coverage using disposable accounts, including MFA and expired codes.
 - Developer ID signing, notarization, and verified downloads.
 
 ## Later

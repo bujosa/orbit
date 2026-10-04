@@ -8,6 +8,7 @@ private let panel = Color(red: 0.092, green: 0.108, blue: 0.122)
 struct FleetView: View {
   @ObservedObject var store: FleetStore
   @State private var adding = false
+  @State private var connections = false
   var body: some View {
     HStack(spacing: 0) {
       sidebar
@@ -49,6 +50,7 @@ struct FleetView: View {
     }
     .background(canvas)
     .sheet(isPresented: $adding) { AddDeviceView(store: store) }
+    .sheet(isPresented: $connections) { ConnectionCenterView(store: store) }
     .alert(
       "Orbit",
       isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })
@@ -115,7 +117,7 @@ struct FleetView: View {
         Image(systemName: "shield.lefthalf.filled").foregroundStyle(mint)
         Text("Private by design").font(.system(size: 11)).foregroundStyle(.secondary)
       }
-      Text("Orbit 0.1 · Early access").font(.system(size: 10)).foregroundStyle(.tertiary).padding(
+      Text("Orbit 0.2 · Early access").font(.system(size: 10)).foregroundStyle(.tertiary).padding(
         .top, 7)
     }.padding(20).frame(width: 220).background(Color(red: 0.043, green: 0.052, blue: 0.06))
   }
@@ -170,6 +172,7 @@ struct FleetView: View {
           .font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
         }
         Spacer()
+        Button("Connect fleet") { connections = true }.buttonStyle(.borderedProminent).tint(mint)
         Button("Open Terminal") { store.openTerminal(entry.device) }
         Button("Open T3") { store.openT3(entry.device) }.disabled(entry.device.t3URL.isEmpty)
         Menu {
@@ -204,7 +207,7 @@ struct FleetView: View {
           .foregroundStyle(.secondary)
         Spacer()
         Button("Verify all") { Task { await store.verifyAll(entry.id) } }.disabled(
-          !entry.online || !entry.verifying.isEmpty)
+          !entry.online || !entry.verifying.isEmpty || store.connectionBusy)
       }
       VStack(spacing: 0) {
         ForEach(Provider.allCases) { provider in
@@ -236,7 +239,8 @@ struct FleetView: View {
           : fresh && check?.state == .limited
             ? "Usage limited"
             : status?.auth == .authenticated
-              ? "Signed in · unverified"
+              ? (fresh && check?.state == .failed
+                ? "Access check failed" : "Signed in · unverified")
               : status?.auth == .notInstalled ? "Not installed" : "Check unavailable"
     let color: Color = verified ? mint : needsLogin ? .orange : .gray
     return HStack(spacing: 14) {
@@ -268,10 +272,14 @@ struct FleetView: View {
         ProgressView().controlSize(.small).frame(width: 30)
       } else {
         Button("Verify access") { Task { await store.verify(entry.id, provider: provider) } }
-          .disabled(!entry.online || status?.auth == .notInstalled)
+          .disabled(!entry.online || status?.auth == .notInstalled || store.connectionBusy)
       }
-      Button("Sign in") { store.openTerminal(entry.device, provider: provider) }.disabled(
-        !entry.online || status?.auth == .notInstalled)
+      Button("Sign in") {
+        connections = true
+        store.beginLogin(entry.device, provider: provider)
+      }.disabled(
+        !entry.online || status?.auth == .notInstalled || store.connectingFleet
+          || store.reconnecting || store.login?.phase.running == true || !entry.verifying.isEmpty)
     }.padding(16)
   }
 

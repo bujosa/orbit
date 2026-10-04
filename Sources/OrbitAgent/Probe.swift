@@ -151,7 +151,7 @@ enum Probe {
     case .claude:
       binary = Paths.claude
       arguments = [
-        "-p", prompt, "--tools", "", "--no-session-persistence", "--permission-mode", "plan",
+        "-p", prompt, "--tools", "", "--no-session-persistence",
         "--output-format", "json", "--settings", "{\"disableAllHooks\":true}", "--mcp-config",
         "{\"mcpServers\":{}}", "--strict-mcp-config",
       ]

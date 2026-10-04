@@ -12,23 +12,17 @@ struct FleetEntry: Identifiable {
   var verifications: [Provider: AccessCheck] = [:]
   var verifying: Set<Provider> = []
   var id: UUID { device.id }
+  var health: ConnectionHealth {
+    ConnectionHealth(snapshot: error == nil ? snapshot : nil, checks: verifications)
+  }
   var online: Bool {
-    guard let snapshot, error == nil else { return false }
-    return abs(snapshot.capturedAt.timeIntervalSinceNow) < 120
+    health.online
   }
   var verifiedCount: Int {
-    guard online else { return 0 }
-    return Provider.allCases.filter { provider in
-      snapshot?.providers.first(where: { $0.id == provider })?.auth == .authenticated
-        && verifications[provider]?.state == .verified && verifications[provider]?.isFresh() == true
-    }.count
+    health.verifiedProviders.count
   }
   func needsLogin(_ provider: Provider) -> Bool {
-    guard online else { return false }
-    let auth = snapshot?.providers.first(where: { $0.id == provider })?.auth
-    return auth == .loginRequired || auth == .expired
-      || (verifications[provider]?.isFresh() == true
-        && verifications[provider]?.state == .loginRequired)
+    health.loginRequired.contains(provider)
   }
 }
 
@@ -40,9 +34,16 @@ final class FleetStore: ObservableObject {
   @Published var refreshing = false
   @Published var message: String?
   @Published var lastRefresh: Date?
+  @Published var login: LoginProgress?
+  @Published var loginInputError: String?
+  @Published var reconnectQueue: [LoginTarget] = []
+  @Published var reconnecting = false
+  @Published var connectingFleet = false
+  @Published var connectionNote: String?
   @Published var notificationsEnabled = UserDefaults.standard.bool(forKey: "Orbit.notifications")
   private let inventory = InventoryStore()
   private var monitor: Task<Void, Never>?
+  private var loginProcess: ManagedLogin?
 
   var localAgent: String {
     let bundled = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/orbit-agent")
@@ -55,19 +56,15 @@ final class FleetStore: ObservableObject {
   var onlineCount: Int { entries.filter(\.online).count }
   var verifiedCount: Int { entries.reduce(0) { $0 + $1.verifiedCount } }
   var attentionCount: Int {
-    entries.filter { entry in
-      entry.error != nil || (entry.online && entry.snapshot?.t3Running == false)
-        || Provider.allCases.contains(where: { entry.needsLogin($0) })
-    }.count
+    entries.filter { $0.error != nil || ($0.snapshot != nil && $0.health.needsAttention) }.count
   }
+  var readyCount: Int { entries.filter { $0.health.ready }.count }
+  var connectionBusy: Bool { connectingFleet || reconnecting || login?.phase.running == true }
 
   init() {
     do {
       entries = try inventory.loadDevices().map { FleetEntry(device: $0) }
-      let file = inventory.directory.appendingPathComponent("state.json")
-      if let data = try? Data(contentsOf: file),
-        let state = try? Wire.decoder.decode([SavedChecks].self, from: data)
-      {
+      if let state = try? inventory.loadChecks() {
         for index in entries.indices {
           entries[index].verifications =
             state.first(where: { $0.deviceID == entries[index].id })?.checks ?? [:]
@@ -84,10 +81,16 @@ final class FleetStore: ObservableObject {
   }
 
   func refresh() async {
-    guard !refreshing else { return }
+    while refreshing {
+      guard !Task.isCancelled else { return }
+      try? await Task.sleep(for: .milliseconds(100))
+    }
     refreshing = true
-    for index in entries.indices { entries[index].checking = true }
-    let devices = entries.map(\.device)
+    let devices = entries.filter { !(login?.phase.running == true && login?.deviceID == $0.id) }
+      .map(\.device)
+    for index in entries.indices {
+      entries[index].checking = devices.contains { $0.id == entries[index].id }
+    }
     let client = client
     await withTaskGroup(of: (UUID, DeviceSnapshot?, String?).self) { group in
       for device in devices {
@@ -125,9 +128,12 @@ final class FleetStore: ObservableObject {
     lastRefresh = Date()
   }
 
-  func verify(_ id: UUID, provider: Provider) async {
+  func verify(_ id: UUID, provider: Provider, afterLogin: UUID? = nil) async {
+    let completingLogin = afterLogin != nil && login?.id == afterLogin && login?.phase == .verifying
+    guard !connectionBusy || completingLogin else { return }
     guard let index = entries.firstIndex(where: { $0.id == id }), entries[index].online,
-      !entries[index].verifying.contains(provider)
+      !entries[index].verifying.contains(provider),
+      !(login?.phase.running == true && login?.deviceID == id && login?.phase != .verifying)
     else { return }
     entries[index].verifying.insert(provider)
     let device = entries[index].device
@@ -153,6 +159,155 @@ final class FleetStore: ObservableObject {
     for provider in Provider.allCases { await verify(id, provider: provider) }
   }
 
+  func connectFleet() async {
+    guard !connectionBusy, entries.allSatisfy({ $0.verifying.isEmpty }) else { return }
+    connectingFleet = true
+    connectionNote = "Checking connections and verifying saved sessions…"
+    await refresh()
+    let ids = entries.filter(\.online).map(\.id)
+    await withTaskGroup(of: Void.self) { group in
+      for id in ids {
+        group.addTask { await self.verifySavedSessions(id) }
+      }
+    }
+    connectingFleet = false
+    connectionNote =
+      readyCount == entries.count && !entries.isEmpty
+      ? "Every Mac and provider is connected and verified."
+      : "\(readyCount) of \(entries.count) Macs ready. Follow the actions below for anything that needs attention."
+  }
+
+  func reconnectAccounts() async {
+    guard !connectionBusy, entries.allSatisfy({ $0.verifying.isEmpty }) else { return }
+    reconnecting = true
+    await refresh()
+    guard reconnecting else { return }
+    reconnectQueue = entries.flatMap { entry in
+      Provider.allCases.filter { entry.needsLogin($0) }.map {
+        LoginTarget(deviceID: entry.id, provider: $0)
+      }
+    }
+    reconnecting = !reconnectQueue.isEmpty
+    nextReconnection()
+  }
+
+  func nextReconnection() {
+    guard login?.phase.running != true else { return }
+    while !reconnectQueue.isEmpty {
+      let target = reconnectQueue.removeFirst()
+      guard let entry = entries.first(where: { $0.id == target.deviceID }), entry.online else {
+        continue
+      }
+      beginLogin(entry.device, provider: target.provider)
+      if login?.phase.running == true { return }
+    }
+    reconnecting = false
+  }
+
+  private func verifySavedSessions(_ id: UUID) async {
+    guard let entry = entries.first(where: { $0.id == id }), let snapshot = entry.snapshot,
+      entry.online
+    else { return }
+    _ = await FleetCoordinator(client: client).connect(
+      device: entry.device, snapshot: snapshot,
+      checks: entry.verifications
+    ) { provider, check in
+      await self.receiveConnectionCheck(id, provider: provider, check: check)
+    }
+  }
+
+  private func receiveConnectionCheck(_ id: UUID, provider: Provider, check: AccessCheck?) {
+    guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
+    if let check {
+      entries[index].verifying.remove(provider)
+      entries[index].verifications[provider] = check
+      persistChecks()
+    } else {
+      entries[index].verifying.insert(provider)
+    }
+  }
+
+  func beginLogin(_ device: Device, provider: Provider) {
+    guard !connectingFleet, login?.phase.running != true,
+      let index = entries.firstIndex(where: { $0.id == device.id }), entries[index].online,
+      entries[index].verifying.isEmpty
+    else { return }
+    if entries[index].verifications[provider]?.state != .loginRequired {
+      entries[index].verifications.removeValue(forKey: provider)
+    }
+    persistChecks()
+    login = LoginProgress(deviceID: device.id, provider: provider)
+    loginInputError = nil
+    let id = login!.id
+    do {
+      let process = try ManagedLogin(device: device, provider: provider, localAgent: localAgent)
+      loginProcess = process
+      Task {
+        for await event in process.events {
+          guard login?.id == id, login?.phase.running == true else { continue }
+          do { try login?.receive(event) } catch {
+            process.cancel()
+            login?.cancel()
+            message = "The agent returned an unsupported sign-in response."
+          }
+          if event.kind == .signedIn {
+            await finishLogin(id, device: device, provider: provider)
+          }
+        }
+        if login?.id == id {
+          loginProcess = nil
+          if login?.phase.running == true { login?.cancel() }
+          if login?.phase == .ready, reconnecting { nextReconnection() }
+        }
+      }
+    } catch {
+      try? login?.receive(LoginEvent(provider: provider, kind: .failed))
+    }
+  }
+
+  private func finishLogin(_ id: UUID, device: Device, provider: Provider) async {
+    do {
+      let snapshot = try await client.snapshot(device)
+      guard login?.id == id, login?.phase == .verifying,
+        let index = entries.firstIndex(where: { $0.id == device.id })
+      else { return }
+      entries[index].snapshot = snapshot
+      entries[index].error = nil
+      let authenticated = snapshot.providers.first { $0.id == provider }?.auth == .authenticated
+      if authenticated { await verify(device.id, provider: provider, afterLogin: id) }
+      guard login?.id == id else { return }
+      login?.complete(
+        authenticated: authenticated,
+        check: entries.first { $0.id == device.id }?.verifications[provider])
+    } catch {
+      login?.complete(authenticated: false, check: nil)
+    }
+  }
+
+  func submitLoginCode(_ code: String) {
+    guard login?.phase == .awaitingBrowser, login?.provider == .claude, let process = loginProcess
+    else { return }
+    do {
+      try process.submit(code: code)
+      loginInputError = nil
+      login?.submittedCode()
+    } catch {
+      loginInputError =
+        "Use only the one-time authorization code from the provider page, then try again."
+    }
+  }
+
+  func cancelLogin() {
+    reconnectQueue = []
+    reconnecting = false
+    loginProcess?.cancel()
+    login?.cancel()
+  }
+  func shutdown() {
+    monitor?.cancel()
+    cancelLogin()
+  }
+
   func add(_ device: Device) throws {
     try device.validate()
     guard
@@ -167,6 +322,10 @@ final class FleetStore: ObservableObject {
   }
 
   func remove(_ id: UUID) {
+    guard !(login?.phase.running == true && login?.deviceID == id) else {
+      message = "Finish or cancel sign-in before removing this Mac."
+      return
+    }
     do {
       let retained = entries.filter { $0.id != id }
       try inventory.saveDevices(retained.map(\.device))
@@ -246,15 +405,10 @@ final class FleetStore: ObservableObject {
       UNNotificationRequest(identifier: "orbit." + key, content: content, trigger: nil))
   }
 
-  private struct SavedChecks: Codable {
-    var deviceID: UUID
-    var checks: [Provider: AccessCheck]
-  }
   private func persistChecks() {
     do {
-      try inventory.write(
-        Wire.encoder.encode(entries.map { SavedChecks(deviceID: $0.id, checks: $0.verifications) }),
-        name: "state.json")
+      try inventory.saveChecks(
+        entries.map { StoredChecks(deviceID: $0.id, checks: $0.verifications) })
     } catch { message = "Could not save the latest checks locally." }
   }
 }

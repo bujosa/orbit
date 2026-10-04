@@ -23,6 +23,14 @@ public struct InventoryStore: Sendable {
     try validate(devices)
     try write(Wire.encoder.encode(devices), name: "devices.json")
   }
+  public func loadChecks() throws -> [StoredChecks] {
+    let path = directory.appendingPathComponent("state.json")
+    guard FileManager.default.fileExists(atPath: path.path) else { return [] }
+    return try Wire.decoder.decode([StoredChecks].self, from: Data(contentsOf: path))
+  }
+  public func saveChecks(_ values: [StoredChecks]) throws {
+    try write(Wire.encoder.encode(values), name: "state.json")
+  }
 
   public func validate(_ devices: [Device]) throws {
     guard devices.count <= 100, Set(devices.map(\.id)).count == devices.count,

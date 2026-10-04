@@ -14,10 +14,21 @@ enum CursorBridge {
     (async () => {
       const {Cursor, Agent} = require(input.sdk);
       if(input.action === 'login') {
+        const parent = path.dirname(credentialPath);
+        for(const directory of [path.join(os.homedir(),'.t3'),path.join(os.homedir(),'.t3/userdata'),parent]) {
+          if(!fs.existsSync(directory)) continue;
+          const info=fs.lstatSync(directory);
+          if(!info.isDirectory() || info.isSymbolicLink() || info.uid!==process.getuid() || (info.mode & 0o022)) throw new Error('Unsafe credential directory');
+        }
+        if(fs.existsSync(credentialPath)) {
+          const info=fs.lstatSync(credentialPath);
+          if(!info.isFile() || info.isSymbolicLink() || info.uid!==process.getuid() || (info.mode & 0o077) || info.size>65536) throw new Error('Unsafe credential file');
+          const previous=JSON.parse(fs.readFileSync(credentialPath,'utf8'));
+          if(typeof previous.apiKey!=='string' || !previous.apiKey) throw new Error('Unsupported credential store');
+        }
         const store = {
           load: async () => undefined,
           save: async value => {
-            const parent = path.dirname(credentialPath);
             fs.mkdirSync(parent, {recursive:true,mode:0o700});
             if(fs.existsSync(credentialPath) && fs.lstatSync(credentialPath).isSymbolicLink()) throw new Error('Unsafe credential path');
             const temporary = credentialPath + '.orbit-' + crypto.randomUUID();
@@ -28,7 +39,7 @@ enum CursorBridge {
         };
         await Cursor.auth.login({openBrowser:false,store,apiKeyName:'Orbit — T3 Code',
           signal:AbortSignal.timeout(300000),onLoginUrl:url => console.log(`Open this official Cursor sign-in page:\n${url}\n`)});
-        console.log('Cursor sign-in saved on this Mac. Refresh Orbit and T3.'); return;
+        console.log('Cursor sign-in saved on this Mac.'); return;
       }
       let credential;
       try { credential = JSON.parse(fs.readFileSync(credentialPath, 'utf8')); }
