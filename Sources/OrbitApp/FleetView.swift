@@ -205,6 +205,8 @@ struct FleetView: View {
             Text(
               "SSH must be enabled and trusted. The Mac must be awake. Orbit cannot unlock FileVault or turn on a powered-off computer."
             ).font(.system(size: 11)).foregroundStyle(.secondary)
+            Button("Retry connection") { Task { await store.refresh(entry.id) } }
+              .disabled(store.refreshing)
           }
         }.padding(16).background(.orange.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
       }
