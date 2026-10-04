@@ -36,7 +36,8 @@ final class FleetStore: ObservableObject {
   @Published var lastRefresh: Date?
   @Published var login: LoginProgress?
   @Published var loginInputError: String?
-  @Published var reconnectQueue: [LoginTarget] = []
+  @Published private(set) var reconnection = ReconnectionQueue()
+  var reconnectQueue: [LoginTarget] { reconnection.pending }
   @Published var reconnecting = false
   @Published var connectingFleet = false
   @Published var connectionNote: String?
@@ -95,14 +96,15 @@ final class FleetStore: ObservableObject {
     }
   }
 
-  func refresh() async {
+  func refresh(_ deviceID: UUID? = nil) async {
     while refreshing {
       guard !Task.isCancelled else { return }
       try? await Task.sleep(for: .milliseconds(100))
     }
     refreshing = true
     // Status is read-only. Keep reachability current even while a provider login is waiting.
-    let devices = entries.map(\.device)
+    let devices = entries.filter { deviceID == nil || $0.id == deviceID }.map(\.device)
+    importSavedChecks()
     for index in entries.indices {
       entries[index].checking = devices.contains { $0.id == entries[index].id }
     }
@@ -196,27 +198,49 @@ final class FleetStore: ObservableObject {
     connectionNote = nil
     await refresh()
     guard reconnecting else { return }
-    reconnectQueue = entries.flatMap { entry in
-      Provider.allCases.filter { entry.needsLogin($0) }.map {
-        LoginTarget(deviceID: entry.id, provider: $0)
-      }
-    }
+    reconnection = ReconnectionQueue(
+      targets: entries.flatMap { entry in
+        Provider.allCases.filter { entry.needsLogin($0) }.map {
+          LoginTarget(deviceID: entry.id, provider: $0)
+        }
+      })
     reconnecting = !reconnectQueue.isEmpty
     nextReconnection()
   }
 
   func nextReconnection() {
     guard login?.phase.running != true else { return }
-    while !reconnectQueue.isEmpty {
-      let target = reconnectQueue.removeFirst()
-      guard let entry = entries.first(where: { $0.id == target.deviceID }), entry.online else {
-        continue
-      }
+    if let target = reconnection.next(
+      available: Set(entries.map(\.id)), reachable: Set(entries.filter(\.online).map(\.id)))
+    {
+      let entry = entries.first { $0.id == target.deviceID }!
+      connectionNote = nil
       beginLogin(entry.device, provider: target.provider)
       if login?.phase.running == true { return }
     }
+    if let waiting = reconnection.waiting,
+      let entry = entries.first(where: { $0.id == waiting.deviceID })
+    {
+      login = nil
+      connectionNote =
+        "\(displayName(entry.device)) is unreachable. The reconnection queue is paused."
+      return
+    }
     reconnecting = false
     connectionNote = connectionSummary
+  }
+
+  func retryWaitingConnection() async {
+    guard reconnecting, let waiting = reconnection.waiting else { return }
+    await refresh(waiting.deviceID)
+    guard reconnecting, reconnection.waiting?.id == waiting.id else { return }
+    nextReconnection()
+  }
+
+  func skipWaitingConnection() {
+    guard reconnecting, reconnection.waiting != nil else { return }
+    reconnection.skipWaiting()
+    nextReconnection()
   }
 
   private func verifySavedSessions(_ id: UUID) async {
@@ -295,7 +319,12 @@ final class FleetStore: ObservableObject {
         authenticated: authenticated,
         check: entries.first { $0.id == device.id }?.verifications[provider])
     } catch {
-      login?.complete(authenticated: false, check: nil)
+      login?.complete(
+        authenticated: false,
+        check: AccessCheck(
+          provider: provider, state: .failed,
+          note: (error as? OrbitError)?.errorDescription
+            ?? "The saved session could not be checked."))
     }
   }
 
@@ -313,7 +342,7 @@ final class FleetStore: ObservableObject {
   }
 
   func cancelLogin() {
-    reconnectQueue = []
+    reconnection.stop()
     reconnecting = false
     loginProcess?.cancel()
     login?.cancel()
@@ -425,5 +454,18 @@ final class FleetStore: ObservableObject {
       try inventory.saveChecks(
         entries.map { StoredChecks(deviceID: $0.id, checks: $0.verifications) })
     } catch { message = "Could not save the latest checks locally." }
+  }
+
+  private func importSavedChecks() {
+    guard let saved = try? inventory.loadChecks() else { return }
+    for index in entries.indices {
+      guard let incoming = saved.first(where: { $0.deviceID == entries[index].id }) else {
+        continue
+      }
+      entries[index].verifications =
+        StoredChecks(
+          deviceID: entries[index].id, checks: entries[index].verifications
+        ).merging(incoming).checks
+    }
   }
 }

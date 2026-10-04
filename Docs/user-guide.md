@@ -2,12 +2,12 @@
 
 ## Requirements
 
-- macOS 14 or later. The downloadable 0.2.0 binary targets Apple Silicon; other architectures need a local build.
+- macOS 14 or later. The downloadable 0.2.1 binary targets Apple Silicon; other architectures need a local build.
 - Node.js 22.13+ available in a normal install location or the Mac's configured PATH.
 - Official Claude Code, Codex, and Grok Build CLIs for the providers you use. Cursor uses its official SDK, bundled on the controller.
 - A provider account with access to the requested model. A saved account session alone does not prove model access.
 
-Download the [early-access release](https://github.com/bujosa/orbit/releases/tag/v0.2.0), extract the ZIP, and move the app to Applications. It is ad hoc signed, not notarized. You can instead build from the tagged source using the README instructions.
+Download the [early-access release](https://github.com/bujosa/orbit/releases/tag/v0.2.1), extract the ZIP, and move the app to Applications. It is ad hoc signed, not notarized. You can instead build from the tagged source using the README instructions.
 
 ## Add a remote Mac
 
@@ -55,6 +55,8 @@ Turn **Privacy mode** off to see the temporary sign-in instructions. Codes and c
 
 **Reconnect needed accounts** creates a queue. It completes one login and access check before starting the next. Failure or expiry pauses the queue; choose retry or skip. **Stop queue** cancels the owned attempt and clears pending items. Cancelling, expiry, or quitting Orbit stops its login process. Codex file-cache recovery can restore a previous cache removed by an unsuccessful attempt, while preserving newly written or externally changed credentials. That recovery cannot guarantee the provider still accepts the old session.
 
+If a queued Mac becomes unreachable, its account stays pending. Wake it, connect Tailscale, and check Remote Login, then choose **Retry connection**. This checks that Mac before resuming sign-in. **Skip this account** leaves its login unchanged and moves to the next item. Reconnecting the network alone does not restart a paused login. The dashboard and connection center also offer a read-only **Retry connection** for an unreachable Mac.
+
 Each Mac should have an independent official login. More devices share your provider's existing entitlement and usage policy. Orbit does not purchase or renew subscriptions. Provider refresh behavior remains provider-owned.
 
 ## Privacy mode and notifications
@@ -70,3 +72,9 @@ Orbit stores `devices.json` and `state.json` in `~/Library/Application Support/O
 Quit Orbit before replacing its app bundle. Your Application Support inventory remains available after an update. Open the updated app, update each remote agent, then refresh. Closing its main window keeps the menu bar companion running; **Quit Orbit** stops monitoring. FileVault may require a physical unlock and user login after a target reboot.
 
 For command-line status, explicit verification, and agent installation, use the commands in the [README](../README.md#automation). For problems, see [troubleshooting](troubleshooting.md).
+
+After `orbitctl connect`, **Refresh** imports its saved results without rerunning model requests. Original verification timestamps and the 15-minute freshness window are preserved.
+
+## Orbit and Uso
+
+Orbit checks reachability and provider access across multiple Macs and starts official sign-in where needed. [Uso](https://ovvlo.com/open-source/uso/) shows remaining AI usage in the menu bar on an individual Mac. Use them independently or side by side; they do not share a central credential vault or change your provider's billing and usage allowances.

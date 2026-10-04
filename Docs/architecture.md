@@ -54,6 +54,10 @@ A zero exit from the official login means **signed in**, not **ready**. The cont
 
 The reconnection queue is created only by an explicit controller action. It processes one device/provider pair at a time, advances after verified success, pauses on failure, and offers retry, skip, and stop. A queue and fleet verification cannot overlap. Stopping clears pending actions; queued work is never persisted or resumed silently.
 
+The queue retains an unreachable target rather than consuming it. Only **Retry connection** or **Skip this account** advances a connectivity pause; routine monitoring never resumes login. A target is discarded automatically only if its Mac was explicitly removed from the inventory. Retrying reads metadata for that Mac before starting its pending sign-in. The queue remains controller-local and adds no agent protocol command.
+
+Metadata refresh imports the newest saved per-provider checks written by `orbitctl`, preserving newer in-memory checks and persistent authentication rejection. Imported checks must match the device/provider and cannot be more than 30 seconds in the future. Importing a result does not extend its original verification timestamp or send inference.
+
 Snapshots remain schema 1, so existing status consumers remain compatible. The managed-login command requires agent 0.2. Update agents before using the new app. Credentials stay on the target Mac; Cursor refuses unrecognized or encrypted existing stores. Independent Claude sign-in retires only recognized private launchers and retains a local recovery archive.
 
 `FleetCoordinator` owns the shared check policy for the SwiftUI connection center and `orbitctl`. It verifies authenticated providers with stale/missing checks, skips valid checks and missing logins, and preserves usage/authentication failures as separate outcomes. The controller publishes sanitized status JSON, never login challenges. It is an on-demand CLI, not a public API or unattended authentication service.

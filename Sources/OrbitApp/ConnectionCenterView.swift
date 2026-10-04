@@ -38,7 +38,7 @@ struct ConnectionCenterView: View {
               || store.entries.contains { !$0.verifying.isEmpty }
               || !store.entries.contains { !$0.health.loginRequired.isEmpty })
         if store.reconnecting, store.login == nil {
-          ProgressView().controlSize(.small)
+          if store.refreshing { ProgressView().controlSize(.small) }
           Button("Stop queue") { store.cancelLogin() }
         }
         if store.connectingFleet { ProgressView().controlSize(.small) }
@@ -54,6 +54,7 @@ struct ConnectionCenterView: View {
       }
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
+          if let waiting = store.reconnection.waiting { waitingCard(waiting) }
           if let login = store.login { loginCard(login) }
           ForEach(store.entries) { entry in deviceCard(entry) }
         }
@@ -68,6 +69,26 @@ struct ConnectionCenterView: View {
     .onChange(of: store.login?.phase) { _, _ in authorizationCode = "" }
     .onChange(of: store.login?.id) { _, _ in authorizationCode = "" }
     .onChange(of: store.privacyMode) { _, _ in authorizationCode = "" }
+  }
+
+  private func waitingCard(_ target: LoginTarget) -> some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Label("Connection paused", systemImage: "pause.circle").font(.headline)
+      Text(
+        "Wake the Mac, connect Tailscale on both ends, and check Remote Login. This account stays in the queue until you retry or skip it."
+      ).font(.system(size: 13)).foregroundStyle(.secondary)
+      HStack {
+        Button(store.refreshing ? "Checking Mac…" : "Retry connection") {
+          Task { await store.retryWaitingConnection() }
+        }.buttonStyle(.borderedProminent).tint(connectionMint).disabled(store.refreshing)
+        Button("Skip this account") { store.skipWaitingConnection() }.disabled(store.refreshing)
+        if let device = store.entries.first(where: { $0.id == target.deviceID })?.device {
+          Button("Open Terminal") { store.openTerminal(device) }
+        }
+      }
+    }
+    .padding(20).frame(maxWidth: .infinity, alignment: .leading)
+    .background(.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
   }
 
   private func loginCard(_ login: LoginProgress) -> some View {
@@ -139,7 +160,12 @@ struct ConnectionCenterView: View {
       {
         HStack {
           Button("Try sign-in again") { store.beginLogin(device, provider: login.provider) }
-            .disabled(store.connectingFleet)
+            .disabled(
+              store.connectingFleet || store.entries.first { $0.id == device.id }?.online != true)
+          if store.entries.first(where: { $0.id == device.id })?.online != true {
+            Button("Retry connection") { Task { await store.refresh(device.id) } }
+              .disabled(store.refreshing)
+          }
           Button("Verify current session") {
             Task { await store.verify(device.id, provider: login.provider) }
           }
@@ -185,9 +211,15 @@ struct ConnectionCenterView: View {
         service("Tailscale", ready: entry.health.networkReady)
         service("T3", ready: entry.online && entry.snapshot?.t3Running == true)
       }
+      if !entry.online && !entry.checking {
+        Text("Wake this Mac and check Tailscale and Remote Login, then retry its connection.")
+          .font(.system(size: 12)).foregroundStyle(.secondary)
+      }
       if let error = entry.error {
         Text(error).font(.system(size: 12)).foregroundStyle(.orange)
         HStack {
+          Button("Retry connection") { Task { await store.refresh(entry.id) } }
+            .disabled(store.refreshing)
           Button("Open Terminal") { store.openTerminal(entry.device) }
           if !entry.device.isLocal {
             Button("Install / update agent") { Task { await store.installAgent(entry.device) } }

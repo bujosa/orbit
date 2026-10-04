@@ -4,7 +4,7 @@
 
 A native macOS app for managing AI coding account access across your Macs. See which computers are reachable, which provider sessions work, and where you need to sign in. Connect Claude Code, Codex, Grok Build, and Cursor from one connection center using each provider's official login.
 
-[Download v0.2.0 · Early access](https://github.com/bujosa/orbit/releases/tag/v0.2.0) · [User guide](Docs/user-guide.md) · [Troubleshooting](Docs/troubleshooting.md) · [Architecture](Docs/architecture.md)
+[Download v0.2.1 · Early access](https://github.com/bujosa/orbit/releases/tag/v0.2.1) · [User guide](Docs/user-guide.md) · [Troubleshooting](Docs/troubleshooting.md) · [Architecture](Docs/architecture.md)
 
 ![Orbit fleet dashboard with four Macs and provider connection status](Docs/images/fleet-dashboard.png)
 
@@ -26,7 +26,7 @@ Orbit helps you use your existing subscriptions on your Macs. Payment renewal, i
 
 ## Install
 
-The [v0.2.0 release](https://github.com/bujosa/orbit/releases/tag/v0.2.0) provides an **Apple Silicon** ZIP for **macOS 14 or later**. Extract it and move `Orbit.app` to Applications. This early-access build is ad hoc signed and **not notarized**. If macOS blocks it, review the source and build locally, or use macOS's normal app approval flow if you trust the release. Keep system security protections enabled.
+The [v0.2.1 release](https://github.com/bujosa/orbit/releases/tag/v0.2.1) provides an **Apple Silicon** ZIP for **macOS 14 or later**. Extract it and move `Orbit.app` to Applications. This early-access build is ad hoc signed and **not notarized**. If macOS blocks it, review the source and build locally, or use macOS's normal app approval flow if you trust the release. Keep system security protections enabled.
 
 Install **Node.js 22.13+** and the provider CLIs you use on each Mac. Orbit bundles the pinned Cursor SDK; Node itself and the provider CLIs are separate prerequisites. Grok support targets official **Grok Build**.
 
@@ -75,6 +75,6 @@ The controller and target Macs must be powered on, awake, and connected. Remote 
 
 ## Project status
 
-**0.2.0 is an early-access release.** Native challenges, cancellation, live fleet checks, and core trust boundaries have been exercised. Completed browser approval, MFA recovery, and automatic queue advancement still need broader end-to-end coverage. Developer ID signing, notarization, and automatic service recovery are future work. See the [development handoff](Docs/development-handoff.md) and [roadmap](Docs/roadmap.md).
+**0.2.1 is an early-access release.** Native challenges, cancellation, live fleet checks, and core trust boundaries have been exercised. Completed browser approval, MFA recovery, and automatic queue advancement still need broader end-to-end coverage. Developer ID signing, notarization, and automatic service recovery are future work. See the [development handoff](Docs/development-handoff.md) and [roadmap](Docs/roadmap.md).
 
 Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for validation and repository conventions. [MIT licensed](LICENSE).

@@ -7,6 +7,19 @@ public struct StoredChecks: Codable, Sendable {
     self.deviceID = deviceID
     self.checks = checks
   }
+
+  /// Refresh may import checks from orbitctl without replacing newer app results.
+  public func merging(_ incoming: StoredChecks, now: Date = Date()) -> StoredChecks {
+    guard incoming.deviceID == deviceID else { return self }
+    var result = checks
+    for (provider, check) in incoming.checks {
+      guard check.provider == provider, check.checkedAt <= now.addingTimeInterval(30),
+        result[provider].map({ $0.checkedAt < check.checkedAt }) ?? true
+      else { continue }
+      result[provider] = check
+    }
+    return StoredChecks(deviceID: deviceID, checks: result)
+  }
 }
 
 public struct FleetCoordinator: Sendable {

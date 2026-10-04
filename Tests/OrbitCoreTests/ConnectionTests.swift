@@ -3,6 +3,101 @@ import XCTest
 @testable import OrbitCore
 
 final class ConnectionTests: XCTestCase {
+  func testReconnectionPreservesUnreachableAccountUntilExplicitRetry() throws {
+    let first = LoginTarget(deviceID: UUID(), provider: .codex)
+    let second = LoginTarget(deviceID: UUID(), provider: .claude)
+    var queue = ReconnectionQueue(targets: [first, second])
+    let available: Set<UUID> = [first.deviceID, second.deviceID]
+    XCTAssertNil(queue.next(available: available, reachable: [second.deviceID]))
+    XCTAssertEqual(queue.waiting?.id, first.id)
+    XCTAssertEqual(queue.pending.map(\.id), [first.id, second.id])
+    XCTAssertNil(queue.next(available: available, reachable: [second.deviceID]))
+    XCTAssertEqual(queue.pending.count, 2)
+    XCTAssertEqual(queue.next(available: available, reachable: available)?.id, first.id)
+    XCTAssertNil(queue.waiting)
+    var login = LoginProgress(deviceID: first.deviceID, provider: first.provider)
+    try login.receive(LoginEvent(provider: .codex, kind: .signedIn))
+    login.complete(
+      authenticated: true, check: AccessCheck(provider: .codex, state: .verified, note: ""))
+    XCTAssertEqual(login.phase, .ready)
+    XCTAssertEqual(queue.next(available: available, reachable: available)?.id, second.id)
+  }
+
+  func testReconnectionSkipAndStopNeverResumePendingWork() {
+    let first = LoginTarget(deviceID: UUID(), provider: .codex)
+    let second = LoginTarget(deviceID: UUID(), provider: .cursor)
+    var queue = ReconnectionQueue(targets: [first, second])
+    let available: Set<UUID> = [first.deviceID, second.deviceID]
+    XCTAssertNil(queue.next(available: available, reachable: []))
+    queue.skipWaiting()
+    XCTAssertEqual(queue.next(available: available, reachable: [second.deviceID])?.id, second.id)
+    queue = ReconnectionQueue(targets: [first, second])
+    XCTAssertNil(queue.next(available: available, reachable: []))
+    queue.stop()
+    XCTAssertNil(queue.waiting)
+    XCTAssertTrue(queue.pending.isEmpty)
+    XCTAssertNil(queue.next(available: available, reachable: available))
+  }
+
+  func testReconnectionDiscardsOnlyAccountsWhoseMacWasRemoved() {
+    let removed = LoginTarget(deviceID: UUID(), provider: .codex)
+    let retained = LoginTarget(deviceID: UUID(), provider: .claude)
+    var queue = ReconnectionQueue(targets: [removed, retained])
+    XCTAssertNil(queue.next(available: [retained.deviceID], reachable: []))
+    XCTAssertEqual(queue.pending.map(\.id), [retained.id])
+    XCTAssertEqual(queue.waiting?.id, retained.id)
+  }
+
+  func testImportedChecksPreserveNewerResultsAndAuthenticationFailures() {
+    let now = Date()
+    let id = UUID()
+    let existing = StoredChecks(
+      deviceID: id,
+      checks: [
+        .claude: AccessCheck(provider: .claude, state: .verified, checkedAt: now, note: ""),
+        .codex: AccessCheck(
+          provider: .codex, state: .loginRequired, checkedAt: now.addingTimeInterval(-3600),
+          note: ""),
+      ])
+    let incoming = StoredChecks(
+      deviceID: id,
+      checks: [
+        .claude: AccessCheck(
+          provider: .claude, state: .failed, checkedAt: now.addingTimeInterval(-60), note: ""),
+        .cursor: AccessCheck(provider: .cursor, state: .verified, checkedAt: now, note: ""),
+      ])
+    let merged = existing.merging(incoming, now: now)
+    XCTAssertEqual(merged.checks[.claude]?.state, .verified)
+    XCTAssertEqual(merged.checks[.codex]?.state, .loginRequired)
+    XCTAssertEqual(merged.checks[.cursor]?.state, .verified)
+    let recovered = merged.merging(
+      StoredChecks(
+        deviceID: id,
+        checks: [
+          .codex: AccessCheck(provider: .codex, state: .verified, checkedAt: now, note: "")
+        ]), now: now)
+    XCTAssertEqual(recovered.checks[.codex]?.state, .verified)
+  }
+
+  func testImportedChecksRejectOtherDevicesWrongProvidersAndFutureResults() {
+    let now = Date()
+    let existing = StoredChecks(deviceID: UUID(), checks: [:])
+    let other = StoredChecks(
+      deviceID: UUID(),
+      checks: [
+        .claude: AccessCheck(provider: .claude, state: .verified, checkedAt: now, note: "")
+      ])
+    XCTAssertTrue(existing.merging(other, now: now).checks.isEmpty)
+    let invalid = StoredChecks(
+      deviceID: existing.deviceID,
+      checks: [
+        .claude: AccessCheck(provider: .codex, state: .verified, checkedAt: now, note: ""),
+        .cursor: AccessCheck(
+          provider: .cursor, state: .verified, checkedAt: now.addingTimeInterval(31), note: ""),
+      ])
+    XCTAssertTrue(existing.merging(invalid, now: now).checks.isEmpty)
+  }
+
   func testAuthenticationRejectionRemainsActionableAfterVerificationTTL() {
     let snapshot = DeviceSnapshot(
       hostname: "Example", t3Running: true, tailscaleConnected: true,
